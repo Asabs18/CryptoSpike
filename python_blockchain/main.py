@@ -1,6 +1,8 @@
 from blockchain import Blockchain
 from transaction import Transaction
 
+#CHATGPT LINK - https://chatgpt.com/share/67fd756d-a058-800f-b451-6777eb290147
+
 def main():
     # Initialize the blockchain with a given mining difficulty
     # Higher difficulty = more time to find a valid hash
