@@ -1,35 +1,42 @@
 from blockchain import Blockchain
 from transaction import Transaction
+from wallet import generate_keypair, get_address
 
-#CHATGPT LINK - https://chatgpt.com/share/67fd756d-a058-800f-b451-6777eb290147
+#Chatgpt link: https://chatgpt.com/share/67feb5e9-0b78-800f-bc62-ed4d78f7a417
 
 def main():
-    # Initialize the blockchain with a given mining difficulty
-    # Higher difficulty = more time to find a valid hash
+    print("🔐 Creating wallets...")
+    # Wallets
+    alice_sk, alice_vk = generate_keypair()
+    bob_sk, bob_vk = generate_keypair()
+    miner = "Miner1"
+
+    alice = get_address(alice_vk)
+    bob = get_address(bob_vk)
+
+    # Blockchain setup
     chain = Blockchain(difficulty=5)
 
-    # Add transactions to the mempool (not yet confirmed on the chain)
-    chain.create_transaction(Transaction("Alice", "Bob", 50))
-    chain.create_transaction(Transaction("Bob", "Charlie", 25))
+    # Mint coins to Alice
+    chain.try_transaction(Transaction("network", alice, 100))
+    chain.mine_pending_transactions(miner)
+    chain.print_balances([alice, bob, miner])
 
-    # Mine a block from all pending transactions
-    # Includes a reward for the miner ('Miner1')
-    chain.mine_pending_transactions("Miner1")
+    # Alice → Bob (signed)
+    tx1 = Transaction.create_signed(alice_sk, bob, 40)
+    chain.try_transaction(tx1)
 
-    # Add another round of transactions
-    chain.create_transaction(Transaction("Charlie", "Dave", 10))
-    chain.create_transaction(Transaction("Eve", "Frank", 15))
+    # Bob → Alice (invalid — too much)
+    tx2 = Transaction.create_signed(bob_sk, alice, 100)
+    chain.try_transaction(tx2)
 
-    # Mine those as well
-    chain.mine_pending_transactions("Miner1")
+    # Bob → Alice (valid)
+    tx3 = Transaction.create_signed(bob_sk, alice, 10)
+    chain.try_transaction(tx3)
 
-    # Print out all confirmed blocks in the blockchain
-    for block in chain.chain:
-        print(block)
-
-    # Check the blockchain's integrity
-    print("\nIs blockchain valid?", chain.is_chain_valid())
-
+    chain.mine_pending_transactions(miner)
+    chain.print_balances([alice, bob, miner])
+    chain.print_chain()
 
 if __name__ == "__main__":
     main()
