@@ -1,6 +1,9 @@
-from .blockchain.blockchain import Blockchain
-from .blockchain.transaction import Transaction
-from .user.user import User
+from blockchain.blockchain import Blockchain
+from blockchain.transaction import Transaction
+from user.user import User
+
+# CHATGPT LINK:
+# https://chatgpt.com/share/67feb5e9-0b78-800f-bc62-ed4d78f7a417
 
 def main():
     print("🔐 Creating users...")

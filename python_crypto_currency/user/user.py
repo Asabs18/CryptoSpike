@@ -1,5 +1,5 @@
-from wallet import generate_keypair, get_address
-from ..blockchain.transaction import Transaction
+from .wallet import generate_keypair, get_address
+from blockchain.transaction import Transaction
 
 class User:
     """

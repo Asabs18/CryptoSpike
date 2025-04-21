@@ -6,6 +6,9 @@ from blockchain.transaction import Transaction
 from blockchain.block import Block
 import time
 
+# CHATGPT LINK:
+# https://chatgpt.com/share/67feb5e9-0b78-800f-bc62-ed4d78f7a417
+
 # Create Flask app and initialize blockchain
 app = Flask(__name__, template_folder="templates")
 chain = Blockchain(difficulty=4)
