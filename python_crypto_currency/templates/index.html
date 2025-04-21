@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>My Blockchain Wallet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Bootstrap CSS for UI components and layout -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    /* Custom styling for elements */
+    .copy-btn { cursor: pointer; font-size: 0.9em; color: #007bff; margin-right: 0.5em; }
+    .scroll-x { overflow-x: auto; white-space: nowrap; }
+    .mined-block { border: 2px solid green; background: #e6ffe6; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+    .tx-list { background: #f9f9f9; border-left: 3px solid #ddd; padding: 8px; margin-top: 5px; font-size: 0.85rem; }
+    .tx-entry { margin-bottom: 6px; }
+    .centered-buttons { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+  </style>
+</head>
+
+<body class="bg-light">
+  <div class="container py-4">
+    <!-- Header with port display -->
+    <div class="text-center mb-4">
+      <h1 class="mb-2">🧱 My Blockchain Wallet</h1>
+      <div>
+        <strong>Port:</strong> <span id="nodePort"></span>
+        <span class="copy-btn" onclick="copyText('nodePort')">📋</span>
+      </div>
+    </div>
+
+    <!-- Balance section -->
+    <div class="mb-4 p-3 bg-white rounded shadow-sm text-center">
+      <h2>💰 Balance: <span id="walletBalance">Loading...</span></h2>
+    </div>
+
+    <!-- Wallet generation / display -->
+    <div class="mb-4 p-3 bg-white rounded shadow-sm">
+      <h4 class="text-center">🔐 Wallet</h4>
+      <div class="centered-buttons mb-3">
+        <button class="btn btn-outline-primary" onclick="generateWallet()">Generate Wallet</button>
+        <button class="btn btn-outline-danger" onclick="resetWallet()">Reset Wallet</button>
+      </div>
+      <div id="walletInfo" style="display: none;" class="text-center">
+        <div class="d-flex justify-content-center">
+          <span class="copy-btn me-2" onclick="copyText('walletAddress')">📋</span>
+          <div style="max-width: 100%; overflow-x: auto;">
+            <div style="min-width: 10rem; white-space: nowrap;" id="walletAddress"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transaction creation form -->
+    <div class="mb-4 p-3 bg-white rounded shadow-sm">
+      <h4 class="text-center">📤 Create & Sign Transaction</h4>
+      <form id="txForm">
+        <div class="mb-2">
+          <label for="receiver" class="form-label">Receiver Address</label>
+          <input class="form-control" id="receiver" required />
+        </div>
+        <div class="mb-2">
+          <label for="amount" class="form-label">Amount</label>
+          <input class="form-control" id="amount" type="number" step="0.01" required />
+        </div>
+        <div class="centered-buttons">
+          <button type="submit" class="btn btn-primary">Send Transaction</button>
+        </div>
+      </form>
+      <div id="txStatus" class="mt-2 text-success text-center"></div>
+    </div>
+
+    <!-- Mempool / pending transactions -->
+    <div class="bg-white p-3 rounded shadow-sm mt-4 mb-4">
+      <h4 class="text-center">📥 Pending Transactions</h4>
+      <div id="mempoolDisplay" class="tx-list" style="max-height: 300px; overflow-y: auto;"></div>
+    </div>
+
+    <!-- Mining block control -->
+    <div class="mb-4 p-3 bg-white rounded shadow-sm">
+      <h4 class="text-center">⛏️ Mine Pending Transactions</h4>
+      <div class="centered-buttons">
+        <button id="mineBtn" class="btn btn-success">Mine Block</button>
+      </div>
+      <div id="mineStatus" class="mt-2 text-info scroll-x text-center"></div>
+    </div>
+
+    <!-- Blockchain visualizer -->
+    <div class="bg-white p-3 rounded shadow-sm">
+      <h4 class="text-center">🔗 Blockchain</h4>
+      <div id="chainDisplay" class="scroll-x" style="max-height: 600px; overflow-y: auto;"></div>
+    </div>
+
+    <!-- Peer network section -->
+    <div class="bg-white p-3 rounded shadow-sm mt-4">
+      <h4 class="text-center">🌐 Peer Network</h4>
+      <form id="peerForm" class="mb-3 d-flex gap-2 justify-content-center">
+        <input class="form-control w-auto" id="newPeer" placeholder="5001" />
+        <button type="submit" class="btn btn-outline-primary">Add Peer</button>
+      </form>
+      <p class="text-center"><strong>Known Peers:</strong></p>
+      <ul id="peerList" class="small text-center"></ul>
+    </div>
+  </div>
+
+  <!-- JavaScript logic -->
+  <script>
+    // Global wallet variable
+    let wallet = null;
+
+    // 📋 Copies content of element to clipboard
+    function copyText(id) {
+      const el = document.getElementById(id);
+      navigator.clipboard.writeText(el.textContent.trim());
+    }
+
+    // 🧠 Load saved wallet from localStorage
+    const savedWallet = localStorage.getItem("wallet");
+    if (savedWallet) {
+      wallet = JSON.parse(savedWallet);
+      showWalletInfo();
+    }
+
+    // Show port number
+    const port = window.location.port;
+    document.getElementById("nodePort").textContent = port;
+
+    // 🔗 Fetch blockchain and render UI
+    async function fetchChain() {
+      const res = await fetch("/chain");
+      const json = await res.json();
+      const container = document.getElementById("chainDisplay");
+      container.innerHTML = "";
+      json.forEach((block) => {
+        const div = document.createElement("div");
+        div.className = "mined-block";
+        div.innerHTML = `
+          <strong>Block #${block.index}</strong><br/>
+          🧱 Hash: <code>${block.hash.slice(0, 20)}...</code><br/>
+          🔗 Prev: <code>${block.previous_hash.slice(0, 20)}...</code><br/>
+          ⛏️ Nonce: ${block.nonce}<br/>
+          ⏱️ Time: ${new Date(block.timestamp * 1000).toLocaleString()}<br/>
+          📦 Transactions (${block.transactions.length}):<br/>
+          <div class="tx-list">
+            ${block.transactions.map(tx => `
+              <div class="tx-entry">🔄 ${tx.sender.slice(0, 12)}... → ${tx.receiver.slice(0, 12)}... (${tx.amount})</div>
+            `).join('')}
+          </div>
+        `;
+        container.appendChild(div);
+      });
+      updateBalance();
+      renderMempool(); // refresh mempool too
+    }
+
+    // 💰 Calculate balance for current wallet
+    async function updateBalance() {
+      if (!wallet) return;
+      const res = await fetch("/chain");
+      const json = await res.json();
+      let balance = 0;
+      json.forEach(block => {
+        block.transactions.forEach(tx => {
+          if (tx.sender === wallet.address) balance -= tx.amount;
+          if (tx.receiver === wallet.address) balance += tx.amount;
+        });
+      });
+      document.getElementById("walletBalance").textContent = balance;
+    }
+
+    // 🔄 Render pending transactions (mempool)
+    async function renderMempool() {
+      const res = await fetch("/mempool");
+      const txs = await res.json();
+      const container = document.getElementById("mempoolDisplay");
+      container.innerHTML = "";
+      if (txs.length === 0) {
+        container.innerHTML = '<div class="text-muted">No pending transactions</div>';
+        return;
+      }
+      txs.forEach(tx => {
+        const entry = document.createElement("div");
+        entry.className = "tx-entry";
+        entry.innerHTML = `🔄 <b>${tx.sender.slice(0, 12)}...</b> → <b>${tx.receiver.slice(0, 12)}...</b> (${tx.amount})`;
+        container.appendChild(entry);
+      });
+    }
+
+    // 🌐 Broadcast a transaction to peers
+    async function broadcastTransaction(tx) {
+      await fetch("/broadcast/transaction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tx)
+      });
+    }
+
+    // 🌐 Broadcast newly mined block
+    async function broadcastLastBlock() {
+      const res = await fetch("/chain");
+      const chain = await res.json();
+      const latestBlock = chain[chain.length - 1];
+      await fetch("/broadcast/block", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(latestBlock)
+      });
+      await fetch("/resolve");
+      await renderMempool();
+    }
+
+    // 🔐 Create new wallet
+    async function generateWallet() {
+      const res = await fetch("/wallet/create");
+      const data = await res.json();
+      wallet = {
+        address: data.address,
+        public_key: data.public_key,
+        private_key: data.private_key
+      };
+      localStorage.setItem("wallet", JSON.stringify(wallet));
+      showWalletInfo();
+      fetchChain();
+    }
+
+    // ❌ Reset wallet and clear state
+    function resetWallet() {
+      localStorage.removeItem("wallet");
+      wallet = null;
+      document.getElementById("walletInfo").style.display = "none";
+      document.getElementById("walletAddress").textContent = "";
+      document.getElementById("walletBalance").textContent = "Loading...";
+      document.getElementById("txStatus").textContent = "";
+      document.getElementById("mineStatus").textContent = "";
+    }
+
+    // 👁️ Show wallet info on page
+    function showWalletInfo() {
+      document.getElementById("walletInfo").style.display = "block";
+      document.getElementById("walletAddress").textContent = wallet.address;
+      updateBalance();
+    }
+
+    // 🚀 Handle transaction submission
+    document.getElementById("txForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!wallet) return alert("Generate a wallet first.");
+      const receiver = document.getElementById("receiver").value;
+      const amount = parseFloat(document.getElementById("amount").value);
+      const res = await fetch("/transaction/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender: wallet.address, receiver, amount })
+      });
+      const json = await res.json();
+      document.getElementById("txStatus").textContent = json.message || json.error;
+      await broadcastTransaction(json.transaction);
+      fetchChain();
+    });
+
+    // ⛏️ Handle block mining logic
+    document.getElementById("mineBtn").addEventListener("click", async () => {
+      if (!wallet) return alert("Generate a wallet first.");
+      const minerAddress = wallet.address;
+      const mineStatus = document.getElementById("mineStatus");
+      mineStatus.innerHTML = `<div class="text-warning">⛏️ Mining block... <span class="spinner-border spinner-border-sm text-secondary"></span></div>`;
+      try {
+        const res = await fetch(`/mine?miner=${minerAddress}`);
+        const json = await res.json();
+        mineStatus.innerHTML = `✅ Block mined by <code>${minerAddress}</code>`;
+        await fetchChain();
+        await broadcastLastBlock();
+        await renderMempool();
+      } catch (err) {
+        mineStatus.innerHTML = `<span class="text-danger">❌ Mining failed.</span>`;
+      }
+    });
+
+    // ➕ Add peer to list
+    document.getElementById("peerForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("newPeer").value.trim();
+      if (!input) return;
+      const peerUrl = input.startsWith("http") ? input : `http://localhost:${input}`;
+      await fetch("/peers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ peer: peerUrl })
+      });
+      document.getElementById("newPeer").value = "";
+      loadPeers();
+    });
+
+    // 🔁 Display all known peers
+    async function loadPeers() {
+      const res = await fetch("/peers");
+      const json = await res.json();
+      const list = document.getElementById("peerList");
+      list.innerHTML = "";
+      json.peers.forEach(peer => {
+        const li = document.createElement("li");
+        li.textContent = peer;
+        list.appendChild(li);
+      });
+    }
+
+    // 🔄 Pull mempool from peers to sync
+    async function syncMempool() {
+      const peersRes = await fetch("/peers");
+      const { peers } = await peersRes.json();
+      for (const peer of peers) {
+        try {
+          const res = await fetch(`${peer}/mempool`);
+          const peerTxs = await res.json();
+          await fetch("/mempool/merge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(peerTxs)
+          });
+        } catch (err) {
+          console.warn("Failed to sync mempool with", peer);
+        }
+      }
+    }
+
+    // 🕒 Re-sync every 5 seconds
+    setInterval(() => {
+      fetch("/resolve").then(() => fetchChain());
+      syncMempool();
+      renderMempool();
+    }, 5000);
+
+    // Initial load
+    fetchChain();
+    loadPeers();
+    renderMempool();
+  </script>
+</body>
+</html>

@@ -1,5 +1,7 @@
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 
+wallet_store = {}
+
 def generate_keypair():
     """
     Returns (private_key, public_key) objects.
