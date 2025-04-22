@@ -1,4 +1,5 @@
-# Imports
+# Updated node.py with improved chain syncing and mempool clearing
+
 from flask import Flask, request, jsonify, render_template
 import requests
 from blockchain.blockchain import Blockchain
@@ -6,22 +7,14 @@ from blockchain.transaction import Transaction
 from blockchain.block import Block
 import time
 
-# CHATGPT LINK:
-# https://chatgpt.com/share/67feb5e9-0b78-800f-bc62-ed4d78f7a417
-
-# Create Flask app and initialize blockchain
 app = Flask(__name__, template_folder="templates")
 chain = Blockchain(difficulty=4)
-peers = set()  # Set to keep track of known peers
+peers = set()
 
-# ---------------------- ROUTES ----------------------
-
-# Home page (renders the main HTML dashboard)
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
 
-# Get the full blockchain
 @app.route("/chain", methods=["GET"])
 def get_chain():
     return jsonify([{
@@ -33,7 +26,6 @@ def get_chain():
         "transactions": [tx.__dict__ for tx in block.transactions]
     } for block in chain.chain])
 
-# Add a transaction directly (unsigned)
 @app.route("/transaction", methods=["POST"])
 def add_transaction():
     data = request.get_json()
@@ -44,7 +36,6 @@ def add_transaction():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-# Create and add a signed transaction using a local wallet store
 @app.route("/transaction/create", methods=["POST"])
 def create_signed_transaction():
     data = request.get_json()
@@ -64,7 +55,6 @@ def create_signed_transaction():
     chain.create_transaction(tx)
     return jsonify({"message": "Signed transaction accepted", "transaction": tx.__dict__}), 201
 
-# Generate a new wallet keypair and return it
 @app.route("/wallet/create", methods=["GET"])
 def create_wallet():
     from ecdsa import SigningKey, SECP256k1
@@ -84,30 +74,29 @@ def create_wallet():
         "private_key": priv
     })
 
-# Mine a new block with the pending transactions
 @app.route("/mine", methods=["GET"])
 def mine():
     miner = request.args.get("miner")
     if not miner:
         return jsonify({"error": "Missing ?miner=... parameter"}), 400
+
+    fetch_all_peers_and_resolve()  # 🧠 Check latest before mining
     chain.mine_pending_transactions(miner)
+    broadcast_last_block()
     return jsonify({"message": f"Block mined by {miner}"})
 
-# Manage peer connections (GET to list, POST to add)
 @app.route("/peers", methods=["GET", "POST"])
 def manage_peers():
     if request.method == "POST":
         data = request.get_json()
         peer = data.get("peer")
         if peer:
-            # Avoid adding self
             if peer != f"http://localhost:{request.host.split(':')[1]}":
                 peers.add(peer)
             return jsonify({"message": "Peer added", "peers": list(peers)})
         return jsonify({"error": "Missing peer"}), 400
     return jsonify({"peers": list(peers)})
 
-# Broadcast a transaction to all peers
 @app.route("/broadcast/transaction", methods=["POST"])
 def broadcast_transaction():
     tx_data = request.get_json()
@@ -118,7 +107,6 @@ def broadcast_transaction():
             pass
     return jsonify({"message": "Transaction broadcasted"})
 
-# Broadcast a newly mined block to all peers
 @app.route("/broadcast/block", methods=["POST"])
 def broadcast_block():
     block_data = request.get_json()
@@ -129,7 +117,6 @@ def broadcast_block():
             pass
     return jsonify({"message": "Block broadcasted"})
 
-# Receive a block from another peer
 @app.route("/receive_block", methods=["POST"])
 def receive_block():
     data = request.get_json()
@@ -146,30 +133,67 @@ def receive_block():
     latest = chain.get_latest_block()
     if latest.hash == block.previous_hash:
         chain.chain.append(block)
-
-        # Remove transactions in block from pending
-        confirmed = set((tx.sender, tx.receiver, tx.amount) for tx in block.transactions)
-        chain.pending_transactions = [
-            tx for tx in chain.pending_transactions
-            if (tx.sender, tx.receiver, tx.amount) not in confirmed
-        ]
+        clean_mempool_from_chain()
         return jsonify({"message": "Block added"})
+    else:
+        fetch_all_peers_and_resolve()
+        return jsonify({"error": "Block rejected, syncing"}), 400
 
-    return jsonify({"error": "Block rejected"}), 400
-
-# Resolve chain conflicts by choosing the longest valid chain from peers
 @app.route("/resolve", methods=["GET"])
 def resolve_conflicts():
-    longest_chain = None
-    max_length = len(chain.chain)
+    return jsonify(fetch_all_peers_and_resolve())
+
+@app.route("/mempool", methods=["GET"])
+def get_mempool():
+    return jsonify([tx.__dict__ for tx in chain.pending_transactions])
+
+@app.route("/mempool/merge", methods=["POST"])
+def merge_mempool():
+    data = request.get_json()
+    new_txs = [Transaction(**tx) for tx in data]
+    confirmed_set = set((tx.sender, tx.receiver, tx.amount)
+                        for block in chain.chain
+                        for tx in block.transactions)
+    count = 0
+    for tx in new_txs:
+        if (tx.sender, tx.receiver, tx.amount) in confirmed_set:
+            continue
+        if tx in chain.pending_transactions:
+            continue
+        try:
+            chain.create_transaction(tx)
+            count += 1
+        except:
+            pass
+    return jsonify({"message": f"Merged {count} new transactions"})
+
+# --- Utilities ---
+def clean_mempool_from_chain():
+    confirmed = set((tx.sender, tx.receiver, tx.amount)
+                    for block in chain.chain
+                    for tx in block.transactions)
+    chain.pending_transactions = [
+        tx for tx in chain.pending_transactions
+        if (tx.sender, tx.receiver, tx.amount) not in confirmed
+    ]
+
+def broadcast_last_block():
+    block = chain.get_latest_block()
+    try:
+        requests.post("/broadcast/block", json=block.__dict__, timeout=2)
+    except:
+        pass
+
+def fetch_all_peers_and_resolve():
+    longest_chain = chain.chain
+    max_length = len(longest_chain)
 
     for peer in peers:
         try:
             res = requests.get(f"{peer}/chain", timeout=2)
-            peer_chain_data = res.json()
-
+            peer_data = res.json()
             new_chain = []
-            for block in peer_chain_data:
+            for block in peer_data:
                 transactions = [Transaction(**tx) for tx in block["transactions"]]
                 b = Block(
                     index=block["index"],
@@ -187,35 +211,13 @@ def resolve_conflicts():
         except:
             pass
 
-    if longest_chain:
+    if longest_chain != chain.chain:
         chain.chain = longest_chain
-        return jsonify({"message": "Chain replaced with longer chain"})
-    return jsonify({"message": "No replacement needed"})
+        clean_mempool_from_chain()
+        return {"message": "Chain replaced with longer chain"}
 
-# ---------------------- MEMPOOL ENDPOINTS ----------------------
+    return {"message": "No replacement needed"}
 
-# Return pending transactions
-@app.route("/mempool", methods=["GET"])
-def get_mempool():
-    return jsonify([tx.__dict__ for tx in chain.pending_transactions])
-
-# Merge peer mempools into this node's mempool
-@app.route("/mempool/merge", methods=["POST"])
-def merge_mempool():
-    data = request.get_json()
-    new_txs = [Transaction(**tx) for tx in data]
-    count = 0
-    for tx in new_txs:
-        try:
-            if tx in chain.pending_transactions:
-                continue
-            chain.create_transaction(tx)
-            count += 1
-        except:
-            pass
-    return jsonify({"message": f"Merged {count} new transactions"})
-
-# Run app on command-line-specified port
 if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
