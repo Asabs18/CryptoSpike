@@ -39,21 +39,41 @@ def add_transaction():
 @app.route("/transaction/create", methods=["POST"])
 def create_signed_transaction():
     data = request.get_json()
+
     sender = data["sender"]
     receiver = data["receiver"]
     amount = data["amount"]
+    public_key_hex = data["public_key"]
+    signature_hex = data["signature"]
 
-    from user.wallet import wallet_store 
-    from ecdsa import SigningKey, SECP256k1
+    # Create the canonical message (string format must match frontend exactly)
+    message = f"{receiver}:{amount}".encode()
 
-    priv_hex = wallet_store.get(sender)
-    if not priv_hex:
-        return jsonify({"error": "Sender not in wallet store"}), 403
+    try:
+        from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
 
-    sk = SigningKey.from_string(bytes.fromhex(priv_hex), curve=SECP256k1)
-    tx = Transaction.create_signed(sk, receiver, amount)
-    chain.create_transaction(tx)
-    return jsonify({"message": "Signed transaction accepted", "transaction": tx.__dict__}), 201
+        # Convert hex to bytes and reconstruct verifying key
+        vk_bytes = bytes.fromhex(public_key_hex)
+        verifying_key = VerifyingKey.from_string(vk_bytes, curve=SECP256k1)
+
+        # Convert signature from hex to bytes
+        sig_bytes = bytes.fromhex(signature_hex)
+
+        # Perform signature verification
+        if not verifying_key.verify(sig_bytes, message):
+            return jsonify({"error": "Invalid signature"}), 403
+
+    except (BadSignatureError, ValueError) as e:
+        return jsonify({"error": f"Signature verification failed: {str(e)}"}), 403
+
+    # Construct and queue the transaction
+    tx = Transaction(sender, receiver, amount)
+    try:
+        chain.create_transaction(tx)
+        return jsonify({"message": "Signed transaction accepted", "transaction": tx.__dict__}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
 
 @app.route("/wallet/create", methods=["GET"])
 def create_wallet():

@@ -4,12 +4,8 @@
   <meta charset="UTF-8" />
   <title>My Blockchain Wallet</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- Bootstrap CSS for UI components and layout -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-
   <style>
-    /* Custom styling for elements */
     .copy-btn { cursor: pointer; font-size: 0.9em; color: #007bff; margin-right: 0.5em; }
     .scroll-x { overflow-x: auto; white-space: nowrap; }
     .mined-block { border: 2px solid green; background: #e6ffe6; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
@@ -18,24 +14,20 @@
     .centered-buttons { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
   </style>
 </head>
-
 <body class="bg-light">
   <div class="container py-4">
-    <!-- Header with port display -->
     <div class="text-center mb-4">
-      <h1 class="mb-2">🧱 My Blockchain Wallet</h1>
+      <h1 class="mb-2">Blockchain Demo</h1>
       <div>
         <strong>Port:</strong> <span id="nodePort"></span>
         <span class="copy-btn" onclick="copyText('nodePort')">📋</span>
       </div>
     </div>
 
-    <!-- Balance section -->
     <div class="mb-4 p-3 bg-white rounded shadow-sm text-center">
       <h2>💰 Balance: <span id="walletBalance">Loading...</span></h2>
     </div>
 
-    <!-- Wallet generation / display -->
     <div class="mb-4 p-3 bg-white rounded shadow-sm">
       <h4 class="text-center">🔐 Wallet</h4>
       <div class="centered-buttons mb-3">
@@ -52,7 +44,6 @@
       </div>
     </div>
 
-    <!-- Transaction creation form -->
     <div class="mb-4 p-3 bg-white rounded shadow-sm">
       <h4 class="text-center">📤 Create & Sign Transaction</h4>
       <form id="txForm">
@@ -71,13 +62,11 @@
       <div id="txStatus" class="mt-2 text-success text-center"></div>
     </div>
 
-    <!-- Mempool / pending transactions -->
     <div class="bg-white p-3 rounded shadow-sm mt-4 mb-4">
       <h4 class="text-center">📥 Pending Transactions</h4>
       <div id="mempoolDisplay" class="tx-list" style="max-height: 300px; overflow-y: auto;"></div>
     </div>
 
-    <!-- Mining block control -->
     <div class="mb-4 p-3 bg-white rounded shadow-sm">
       <h4 class="text-center">⛏️ Mine Pending Transactions</h4>
       <div class="centered-buttons">
@@ -86,13 +75,11 @@
       <div id="mineStatus" class="mt-2 text-info scroll-x text-center"></div>
     </div>
 
-    <!-- Blockchain visualizer -->
     <div class="bg-white p-3 rounded shadow-sm">
       <h4 class="text-center">🔗 Blockchain</h4>
       <div id="chainDisplay" class="scroll-x" style="max-height: 600px; overflow-y: auto;"></div>
     </div>
 
-    <!-- Peer network section -->
     <div class="bg-white p-3 rounded shadow-sm mt-4">
       <h4 class="text-center">🌐 Peer Network</h4>
       <form id="peerForm" class="mb-3 d-flex gap-2 justify-content-center">
@@ -104,29 +91,151 @@
     </div>
   </div>
 
-  <!-- JavaScript logic -->
-  <script>
-    // Global wallet variable
-    let wallet = null;
+    <!-- 🔐 Wallet Unlock Modal -->
+    <div class="modal fade" id="walletUnlockModal" tabindex="-1" aria-labelledby="walletUnlockModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-primary">
+          <div class="modal-header">
+            <h5 class="modal-title" id="walletUnlockModalLabel">Unlock Wallet</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Please enter your wallet passphrase:</p>
+            <input type="password" class="form-control" id="walletPassphraseInput" placeholder="Your secret passphrase" />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="unlockWallet()">Unlock</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    // 📋 Copies content of element to clipboard
+  <script src="https://cdn.jsdelivr.net/npm/elliptic@6.5.4/dist/elliptic.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Global wallet variables
+    let wallet = null;
+    let walletUnlockCallback = null;
+    let encryptionKey = null;
+
+    // 📋 Copy to clipboard
     function copyText(id) {
       const el = document.getElementById(id);
       navigator.clipboard.writeText(el.textContent.trim());
     }
 
-    // 🧠 Load saved wallet from localStorage
-    const savedWallet = localStorage.getItem("wallet");
-    if (savedWallet) {
-      wallet = JSON.parse(savedWallet);
-      showWalletInfo();
+    // 🔓 Prompt unlock modal with callback
+    function requestWalletUnlock(callback) {
+      walletUnlockCallback = callback;
+      const modal = new bootstrap.Modal(document.getElementById('walletUnlockModal'));
+      modal.show();
     }
 
-    // Show port number
+    // 🔐 Handle unlock modal submission
+    function unlockWallet() {
+      const passphrase = document.getElementById('walletPassphraseInput').value.trim();
+      const modalEl = document.getElementById('walletUnlockModal');
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      modal.hide();
+      document.getElementById('walletPassphraseInput').value = '';
+      if (walletUnlockCallback && passphrase) {
+        walletUnlockCallback(passphrase);
+      }
+    }
+
+    // 🔑 Derive AES key from passphrase
+    async function deriveKey(passphrase, salt) {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw', enc.encode(passphrase), { name: 'PBKDF2' }, false, ['deriveKey']
+      );
+      return crypto.subtle.deriveKey({
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      }, keyMaterial, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+    }
+
+    // 🧊 Encrypt wallet with passphrase
+    async function encryptWallet(walletObj, passphrase) {
+      const enc = new TextEncoder();
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const key = await deriveKey(passphrase, salt);
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        enc.encode(JSON.stringify(walletObj))
+      );
+      return {
+        encrypted: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
+        iv: Array.from(iv),
+        salt: Array.from(salt)
+      };
+    }
+
+    // 🔓 Decrypt wallet with passphrase
+    async function decryptWallet(encryptedData, passphrase) {
+      const enc = new TextEncoder();
+      const dec = new TextDecoder();
+      const { encrypted, iv, salt } = encryptedData;
+      const key = await deriveKey(passphrase, new Uint8Array(salt));
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: new Uint8Array(iv) },
+        key,
+        Uint8Array.from(atob(encrypted), c => c.charCodeAt(0))
+      );
+      return JSON.parse(dec.decode(decrypted));
+    }
+
+    // 🚀 Attempt wallet load on startup
+    (async () => {
+      const encrypted = localStorage.getItem("wallet_encrypted");
+      if (encrypted) {
+        requestWalletUnlock(async (passphrase) => {
+          try {
+            wallet = await decryptWallet(JSON.parse(encrypted), passphrase);
+            showWalletInfo();
+          } catch (err) {
+            alert("❌ Incorrect passphrase or corrupted wallet.");
+          }
+        });
+      }
+    })();
+
+    async function generateWallet() {
+      requestWalletUnlock(async (passphrase) => {
+        const res = await fetch("/wallet/create");
+        const data = await res.json();
+        const plainWallet = {
+          address: data.address,
+          public_key: data.public_key,
+          private_key: data.private_key
+        };
+        const encrypted = await encryptWallet(plainWallet, passphrase);
+        localStorage.setItem("wallet_encrypted", JSON.stringify(encrypted));
+        wallet = plainWallet;
+        showWalletInfo();
+        fetchChain();
+      });
+    }
+
+    function resetWallet() {
+      localStorage.removeItem("wallet_encrypted");
+      wallet = null;
+      document.getElementById("walletInfo").style.display = "none";
+      document.getElementById("walletAddress").textContent = "";
+      document.getElementById("walletBalance").textContent = "Loading...";
+      document.getElementById("txStatus").textContent = "";
+      document.getElementById("mineStatus").textContent = "";
+    }
+
     const port = window.location.port;
     document.getElementById("nodePort").textContent = port;
 
-    // 🔗 Fetch blockchain and render UI
     async function fetchChain() {
       const res = await fetch("/chain");
       const json = await res.json();
@@ -151,10 +260,9 @@
         container.appendChild(div);
       });
       updateBalance();
-      renderMempool(); // refresh mempool too
+      renderMempool();
     }
 
-    // 💰 Calculate balance for current wallet
     async function updateBalance() {
       if (!wallet) return;
       const res = await fetch("/chain");
@@ -169,7 +277,6 @@
       document.getElementById("walletBalance").textContent = balance;
     }
 
-    // 🔄 Render pending transactions (mempool)
     async function renderMempool() {
       const res = await fetch("/mempool");
       const txs = await res.json();
@@ -187,7 +294,26 @@
       });
     }
 
-    // 🌐 Broadcast a transaction to peers
+    async function sha256(msg) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(msg);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    async function signTransaction(privateKeyHex, receiver, amount) {
+      const EC = elliptic.ec;
+      const ec = new EC("secp256k1");
+      const key = ec.keyFromPrivate(privateKeyHex);
+      const message = `${receiver}:${amount}`;
+      const msgHashHex = await sha256(message);
+      const signature = key.sign(msgHashHex);
+      return signature.toDER("hex");
+    }
+
+
     async function broadcastTransaction(tx) {
       await fetch("/broadcast/transaction", {
         method: "POST",
@@ -196,7 +322,6 @@
       });
     }
 
-    // 🌐 Broadcast newly mined block
     async function broadcastLastBlock() {
       const res = await fetch("/chain");
       const chain = await res.json();
@@ -210,56 +335,45 @@
       await renderMempool();
     }
 
-    // 🔐 Create new wallet
-    async function generateWallet() {
-      const res = await fetch("/wallet/create");
-      const data = await res.json();
-      wallet = {
-        address: data.address,
-        public_key: data.public_key,
-        private_key: data.private_key
-      };
-      localStorage.setItem("wallet", JSON.stringify(wallet));
-      showWalletInfo();
-      fetchChain();
-    }
-
-    // ❌ Reset wallet and clear state
-    function resetWallet() {
-      localStorage.removeItem("wallet");
-      wallet = null;
-      document.getElementById("walletInfo").style.display = "none";
-      document.getElementById("walletAddress").textContent = "";
-      document.getElementById("walletBalance").textContent = "Loading...";
-      document.getElementById("txStatus").textContent = "";
-      document.getElementById("mineStatus").textContent = "";
-    }
-
-    // 👁️ Show wallet info on page
     function showWalletInfo() {
       document.getElementById("walletInfo").style.display = "block";
       document.getElementById("walletAddress").textContent = wallet.address;
       updateBalance();
     }
 
-    // 🚀 Handle transaction submission
-    document.getElementById("txForm").addEventListener("submit", async (e) => {
+    document.getElementById("txForm").addEventListener("submit", (e) => {
       e.preventDefault();
       if (!wallet) return alert("Generate a wallet first.");
-      const receiver = document.getElementById("receiver").value;
-      const amount = parseFloat(document.getElementById("amount").value);
-      const res = await fetch("/transaction/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: wallet.address, receiver, amount })
+
+      requestWalletUnlock(async (passphrase) => {
+        const receiver = document.getElementById("receiver").value;
+        const amount = parseFloat(document.getElementById("amount").value);
+
+        const signature = await signTransaction(wallet.private_key, receiver, amount);
+
+        const res = await fetch("/transaction/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender: wallet.address,
+            receiver,
+            amount,
+            signature,
+            public_key: wallet.public_key
+          })
+        });
+
+        const json = await res.json();
+        document.getElementById("txStatus").textContent = json.message || json.error;
+        if (json.transaction) {
+          await broadcastTransaction(json.transaction);
+          fetchChain();
+        }
       });
-      const json = await res.json();
-      document.getElementById("txStatus").textContent = json.message || json.error;
-      await broadcastTransaction(json.transaction);
-      fetchChain();
     });
 
-    // ⛏️ Handle block mining logic
+
+
     document.getElementById("mineBtn").addEventListener("click", async () => {
       if (!wallet) return alert("Generate a wallet first.");
       const minerAddress = wallet.address;
@@ -277,7 +391,6 @@
       }
     });
 
-    // ➕ Add peer to list
     document.getElementById("peerForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = document.getElementById("newPeer").value.trim();
@@ -292,7 +405,6 @@
       loadPeers();
     });
 
-    // 🔁 Display all known peers
     async function loadPeers() {
       const res = await fetch("/peers");
       const json = await res.json();
@@ -305,7 +417,6 @@
       });
     }
 
-    // 🔄 Pull mempool from peers to sync
     async function syncMempool() {
       const peersRes = await fetch("/peers");
       const { peers } = await peersRes.json();
@@ -324,14 +435,12 @@
       }
     }
 
-    // 🕒 Re-sync every 5 seconds
     setInterval(() => {
       fetch("/resolve").then(() => fetchChain());
       syncMempool();
       renderMempool();
     }, 5000);
 
-    // Initial load
     fetchChain();
     loadPeers();
     renderMempool();
