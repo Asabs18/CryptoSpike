@@ -1,12 +1,30 @@
-// ui.js - UI helper functions
+/**
+ * ui.js - UI helper functions for the blockchain wallet interface.
+ *
+ * Provides utilities for:
+ * - Clipboard copying
+ * - Alert banners
+ * - Loading spinner toggles
+ * - Sync status feedback
+ */
 
-// 📋 Copy to clipboard
+/**
+ * 📋 Copy the text content of an element to the clipboard.
+ *
+ * @param {string} id - The ID of the element whose text will be copied.
+ */
 function copyText (id) {
   const el = document.getElementById(id)
   navigator.clipboard.writeText(el.textContent.trim())
 }
 
-// 🔔 Show auto-disappearing alert
+/**
+ * 🔔 Show an auto-disappearing alert message at the top of the screen.
+ *
+ * @param {string} message - The message to display.
+ * @param {string} [type='success'] - The Bootstrap alert type (e.g., 'success', 'danger').
+ * @param {number} [duration=4000] - Duration in milliseconds before the alert disappears.
+ */
 function showAlert (message, type = 'success', duration = 4000) {
   const alertBox = document.getElementById('globalAlert')
   alertBox.textContent = message
@@ -15,7 +33,12 @@ function showAlert (message, type = 'success', duration = 4000) {
   setTimeout(() => alertBox.classList.add('d-none'), duration)
 }
 
-// ⏳ Toggle loading spinner on a button
+/**
+ * ⏳ Toggle a loading spinner and disable/enable the button.
+ *
+ * @param {HTMLElement} button - The button element to toggle loading state on.
+ * @param {boolean} isLoading - Whether to show the loading state.
+ */
 function setLoading (button, isLoading) {
   if (isLoading) {
     button.disabled = true
@@ -29,6 +52,11 @@ function setLoading (button, isLoading) {
   }
 }
 
+/**
+ * 🔄 Toggle the syncing indicator based on peer availability.
+ *
+ * @param {boolean} isSyncing - Whether syncing is currently happening.
+ */
 async function setSyncing (isSyncing) {
   const spinner = document.getElementById('syncSpinner')
   if (!spinner) return

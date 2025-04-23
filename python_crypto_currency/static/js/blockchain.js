@@ -1,24 +1,37 @@
-// blockchain.js - Chain and transaction functions
+/**
+ * blockchain.js - Chain and transaction interaction functions
+ *
+ * Handles:
+ * - Fetching and displaying the blockchain
+ * - Managing the mempool
+ * - Broadcasting transactions and blocks
+ * - Mining blocks
+ * - Submitting transactions via UI
+ */
 
+/**
+ * ⛓️ Fetch the blockchain and render each block and its transactions.
+ */
 async function fetchChain () {
   const res = await fetch('/chain')
   const json = await res.json()
   const container = document.getElementById('chainDisplay')
   container.innerHTML = ''
+
   json.forEach(block => {
     const div = document.createElement('div')
     div.className = 'mined-block'
     div.innerHTML = `
-        <strong>Block #${block.index}</strong><br/>
-        🧱 Hash: <code>${block.hash.slice(0, 20)}...</code><br/>
-        🔗 Prev: <code>${block.previous_hash.slice(0, 20)}...</code><br/>
-        ⛏️ Nonce: ${block.nonce}<br/>
-        ⏱️ Time: ${new Date(block.timestamp * 1000).toLocaleString()}<br/>
-        📦 Transactions (${block.transactions.length}):<br/>
-        <div class="tx-list">
-          ${block.transactions
-            .map(
-              tx => `
+      <strong>Block #${block.index}</strong><br/>
+      🧱 Hash: <code>${block.hash.slice(0, 20)}...</code><br/>
+      🔗 Prev: <code>${block.previous_hash.slice(0, 20)}...</code><br/>
+      ⛏️ Nonce: ${block.nonce}<br/>
+      ⏱️ Time: ${new Date(block.timestamp * 1000).toLocaleString()}<br/>
+      📦 Transactions (${block.transactions.length}):<br/>
+      <div class="tx-list">
+        ${block.transactions
+          .map(
+            tx => `
             <div class="tx-entry">
               ${
                 tx.sender === 'SYSTEM'
@@ -34,20 +47,25 @@ async function fetchChain () {
               }
             </div>
           `
-            )
-            .join('')}
-        </div>
-      `
+          )
+          .join('')}
+      </div>
+    `
     container.appendChild(div)
   })
+
   updateBalance()
   renderMempool()
 }
 
+/**
+ * 💰 Calculate the balance for the current wallet and update the display.
+ */
 async function updateBalance () {
   if (!wallet) return
   const res = await fetch('/chain')
   const json = await res.json()
+
   let balance = 0
   json.forEach(block => {
     block.transactions.forEach(tx => {
@@ -55,9 +73,13 @@ async function updateBalance () {
       if (tx.receiver === wallet.address) balance += tx.amount
     })
   })
+
   document.getElementById('walletBalance').textContent = balance
 }
 
+/**
+ * 📬 Render the current mempool in the UI, highlighting newly created local transactions.
+ */
 async function renderMempool () {
   const res = await fetch('/mempool')
   const txs = await res.json()
@@ -65,6 +87,7 @@ async function renderMempool () {
   const old = new Set(
     [...container.querySelectorAll('.tx-entry')].map(e => e.dataset.txid)
   )
+
   container.innerHTML = ''
 
   if (txs.length === 0) {
@@ -84,9 +107,9 @@ async function renderMempool () {
       12
     )}...</b> → <b>${tx.receiver.slice(0, 12)}...</b> (${tx.amount})`
 
-    // ✅ Only highlight if this node created the transaction AND it's new
+    // Highlight if new and created by local wallet
     if (!old.has(id) && wallet && tx.sender === wallet.address) {
-      entry.style.background = '#dff0d8' // light green
+      entry.style.background = '#dff0d8'
       setTimeout(() => (entry.style.background = ''), 1500)
     }
 
@@ -94,6 +117,11 @@ async function renderMempool () {
   }
 }
 
+/**
+ * 📡 Broadcast a single transaction to all known peers.
+ *
+ * @param {Object} tx - The transaction object to broadcast.
+ */
 async function broadcastTransaction (tx) {
   await fetch('/broadcast/transaction', {
     method: 'POST',
@@ -102,20 +130,27 @@ async function broadcastTransaction (tx) {
   })
 }
 
+/**
+ * 📡 Broadcast the latest block to all peers and resolve chain conflicts.
+ */
 async function broadcastLastBlock () {
   const res = await fetch('/chain')
   const chain = await res.json()
   const latestBlock = chain[chain.length - 1]
+
   await fetch('/broadcast/block', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(latestBlock)
   })
+
   await fetch('/resolve')
   await renderMempool()
 }
 
-// Handle mining button click
+/**
+ * ⛏️ Setup the mining button to trigger block mining.
+ */
 function setupMiningButton () {
   document.getElementById('mineBtn').addEventListener('click', async () => {
     if (!wallet) return showAlert('⚠️ Generate a wallet first.', 'warning')
@@ -138,7 +173,9 @@ function setupMiningButton () {
   })
 }
 
-// Handle transaction form submit
+/**
+ * 💸 Setup the transaction form to send signed transactions to the server.
+ */
 function setupTransactionForm () {
   document.getElementById('txForm').addEventListener('submit', e => {
     e.preventDefault()
@@ -147,7 +184,6 @@ function setupTransactionForm () {
     requestWalletUnlock(async passphrase => {
       const receiver = document.getElementById('receiver').value
       const amount = parseFloat(document.getElementById('amount').value)
-
       const button = document.querySelector('#txForm button[type="submit"]')
       setLoading(button, true)
 
@@ -174,6 +210,7 @@ function setupTransactionForm () {
         json.message || json.error,
         json.transaction ? 'success' : 'danger'
       )
+
       if (json.transaction) {
         await broadcastTransaction(json.transaction)
         fetchChain()

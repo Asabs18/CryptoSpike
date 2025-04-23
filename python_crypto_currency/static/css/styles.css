@@ -1,45 +1,58 @@
-/* Main styling for blockchain wallet app */
+/* styles.css - Main styling for blockchain wallet app */
 
-.copy-btn { 
-    cursor: pointer; 
-    font-size: 0.9em; 
-    color: #007bff; 
-    margin-right: 0.5em; 
-  }
-  
-  .scroll-x { 
-    overflow-x: auto; 
-    white-space: nowrap; 
-  }
-  
-  .mined-block { 
-    border: 2px solid green; 
-    background: #e6ffe6; 
-    padding: 10px; 
-    margin-bottom: 10px; 
-    border-radius: 5px; 
-  }
-  
-  .tx-list { 
-    background: #f9f9f9; 
-    border-left: 3px solid #ddd; 
-    padding: 8px; 
-    margin-top: 5px; 
-    font-size: 0.85rem; 
-  }
-  
-  .tx-entry { 
-    margin-bottom: 6px; 
-  }
-  
-  .centered-buttons { 
-    display: flex; 
-    justify-content: center; 
-    gap: 1rem; 
-    flex-wrap: wrap; 
-  }
-  
-  /* Global alert styles */
-  #globalAlert {
-    z-index: 1050;
-  }
+
+/* 📋 Copy-to-clipboard button */
+.copy-btn {
+  cursor: pointer;                /* Show pointer cursor on hover */
+  font-size: 0.9em;               /* Slightly smaller font */
+  color: #007bff;                 /* Bootstrap primary blue */
+  margin-right: 0.5em;            /* Space between icon and adjacent text */
+}
+
+
+/* ↔️ Horizontal scroll utility */
+.scroll-x {
+  overflow-x: auto;               /* Enable horizontal scrolling */
+  white-space: nowrap;           /* Prevent line wrapping */
+}
+
+
+/* 🧱 Mined block display styling */
+.mined-block {
+  border: 2px solid green;        /* Green border to signify mined block */
+  background: #e6ffe6;            /* Light green background */
+  padding: 10px;                  /* Internal padding */
+  margin-bottom: 10px;           /* Space between blocks */
+  border-radius: 5px;            /* Rounded corners */
+}
+
+
+/* 📦 Transaction list container inside blocks */
+.tx-list {
+  background: #f9f9f9;            /* Light gray background */
+  border-left: 3px solid #ddd;    /* Left border for visual distinction */
+  padding: 8px;                   /* Internal spacing */
+  margin-top: 5px;                /* Space above the list */
+  font-size: 0.85rem;             /* Slightly smaller text */
+}
+
+
+/* 🔄 Individual transaction entry */
+.tx-entry {
+  margin-bottom: 6px;             /* Spacing between transactions */
+}
+
+
+/* 🎛️ Layout for button rows (centered and responsive) */
+.centered-buttons {
+  display: flex;                  /* Flex layout */
+  justify-content: center;       /* Center buttons horizontally */
+  gap: 1rem;                      /* Space between buttons */
+  flex-wrap: wrap;               /* Allow wrapping on smaller screens */
+}
+
+
+/* 🔔 Global alert banner styling */
+#globalAlert {
+  z-index: 1050;                  /* Ensure it appears above most elements (like modals) */
+}

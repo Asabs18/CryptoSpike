@@ -1,10 +1,22 @@
-// network.js - Peer management and network synchronization
+/**
+ * network.js - Peer management and network synchronization
+ *
+ * Handles:
+ * - Adding peers to the local node
+ * - Syncing mempools and blockchains across peers
+ * - Displaying current peers in the UI
+ * - Periodic syncing loop
+ */
 
+/**
+ * 🌐 Load the list of connected peers and display them in the UI.
+ */
 async function loadPeers () {
   const res = await fetch('/peers')
   const json = await res.json()
   const list = document.getElementById('peerList')
   list.innerHTML = ''
+
   json.peers.forEach(peer => {
     const li = document.createElement('li')
     li.textContent = peer
@@ -12,17 +24,23 @@ async function loadPeers () {
   })
 }
 
+/**
+ * ➕ Setup the peer connection form to allow users to add new peers.
+ */
 function setupPeerForm () {
   document.getElementById('peerForm').addEventListener('submit', async e => {
     e.preventDefault()
     const input = document.getElementById('newPeer').value.trim()
+
     if (!input) {
       showAlert('⚠️ Please enter a peer port or URL.', 'warning')
       return
     }
+
     const peerUrl = input.startsWith('http')
       ? input
       : `http://localhost:${input}`
+
     try {
       await fetch('/peers', {
         method: 'POST',
@@ -38,14 +56,20 @@ function setupPeerForm () {
   })
 }
 
+/**
+ * 🔄 Sync the mempool with all known peers by merging their pending transactions.
+ */
 async function syncMempool () {
   setSyncing(true)
+
   const peersRes = await fetch('/peers')
   const { peers } = await peersRes.json()
+
   for (const peer of peers) {
     try {
       const res = await fetch(`${peer}/mempool`)
       const peerTxs = await res.json()
+
       await fetch('/mempool/merge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,10 +79,14 @@ async function syncMempool () {
       console.warn('Failed to sync mempool with', peer)
     }
   }
+
   setSyncing(false)
 }
 
-// 🔁 Periodic sync function
+/**
+ * 🔁 Periodic synchronization loop.
+ * Syncs the chain, mempool, and updates the UI every few seconds.
+ */
 async function periodicSync () {
   if (!wallet) return // Skip syncing if wallet not loaded
 
@@ -80,7 +108,9 @@ async function periodicSync () {
   setSyncing(false)
 }
 
-// 🔁 Start sync interval
+/**
+ * 🕒 Start the periodic sync interval to run every 5 seconds.
+ */
 function startSyncInterval () {
   setInterval(periodicSync, 5000)
 }

@@ -1,9 +1,15 @@
+<!-- peers.html - UI for managing and displaying peer nodes -->
+
 <div class="bg-white p-3 rounded shadow-sm mt-4">
     <h4 class="text-center">🌐 Peer Network</h4>
+
+    <!-- Form to add a new peer by port or URL -->
     <form id="peerForm" class="mb-3 d-flex gap-2 justify-content-center">
         <input class="form-control w-auto" id="newPeer" placeholder="5001" />
         <button type="submit" class="btn btn-outline-primary">Add Peer</button>
     </form>
+
+    <!-- Display of currently connected peers -->
     <p class="text-center"><strong>Known Peers:</strong></p>
     <ul id="peerList" class="small text-center"></ul>
 </div>

@@ -1,15 +1,24 @@
+<!-- wallet.html - UI for generating, resetting, and displaying wallet info -->
+
 <div class="mb-4 p-3 bg-white rounded shadow-sm">
     <h4 class="text-center">🔐 Wallet</h4>
+
+    <!-- Wallet control buttons -->
     <div class="centered-buttons mb-3">
         <button class="btn btn-outline-primary"
             onclick="generateWallet()">Generate Wallet</button>
         <button class="btn btn-outline-danger" onclick="resetWallet()">Reset
             Wallet</button>
     </div>
+
+    <!-- Wallet address display (hidden by default) -->
     <div id="walletInfo" style="display: none;" class="text-center">
         <div class="d-flex justify-content-center">
+            <!-- Copy address to clipboard -->
             <span class="copy-btn me-2"
                 onclick="copyText('walletAddress')">📋</span>
+
+            <!-- Wallet address container (scrollable if long) -->
             <div style="max-width: 100%; overflow-x: auto;">
                 <div style="min-width: 10rem; white-space: nowrap;"
                     id="walletAddress"></div>
