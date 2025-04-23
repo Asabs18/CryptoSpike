@@ -31,7 +31,6 @@ function setupPeerForm () {
   document.getElementById('peerForm').addEventListener('submit', async e => {
     e.preventDefault()
     const input = document.getElementById('newPeer').value.trim()
-
     if (!input) {
       showAlert('⚠️ Please enter a peer port or URL.', 'warning')
       return
@@ -42,16 +41,23 @@ function setupPeerForm () {
       : `http://localhost:${input}`
 
     try {
-      await fetch('/peers', {
+      const res = await fetch('/peers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ peer: peerUrl })
       })
-      showAlert('✅ Peer added!', 'success')
-      document.getElementById('newPeer').value = ''
-      loadPeers()
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        showAlert(json.error || '❌ Failed to add peer', 'danger')
+      } else {
+        showAlert(json.message || '✅ Peer added!', 'success')
+        document.getElementById('newPeer').value = ''
+        loadPeers()
+      }
     } catch (err) {
-      showAlert('❌ Failed to add peer', 'danger')
+      showAlert('❌ Failed to reach server', 'danger')
     }
   })
 }
@@ -101,6 +107,7 @@ async function periodicSync () {
     await fetchChain()
     await syncMempool()
     await renderMempool()
+    await loadPeers()
   } catch (err) {
     console.warn('Periodic sync error:', err)
   }

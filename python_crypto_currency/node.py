@@ -14,16 +14,61 @@ from blockchain.transaction import Transaction
 from blockchain.block import Block
 import hashlib
 from typing import Dict, Any
+from urllib.parse import urlparse
+import sys
+import json
+import os
+import threading
+import time
+
+
+def get_data_dir():
+    port = os.environ.get("NODE_PORT", "5000")
+    path = f"node_data/port_{port}"
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def normalize_peer_url(url):
+    """
+    Normalize a peer URL to http://localhost:PORT format to avoid duplicates.
+    """
+    parsed = urlparse(url if "://" in url else f"http://{url}")
+    hostname = "localhost" if parsed.hostname in ["127.0.0.1", "localhost"] else parsed.hostname
+    return f"http://{hostname}:{parsed.port}"
+
+PEERS_FILE = os.path.join(get_data_dir(), "peers.json")
+peers = set()
+
+def load_peers():
+    global peers
+    if os.path.exists(PEERS_FILE):
+        try:
+            with open(PEERS_FILE, "r") as f:
+                peers.update(json.load(f))
+        except Exception:
+            pass
+
+def save_peers():
+    try:
+        with open(PEERS_FILE, "w") as f:
+            json.dump(list(peers), f)
+    except Exception:
+        pass
+
 
 app = Flask(__name__, template_folder="templates")
 chain = Blockchain(difficulty=4)
-peers = set()
+load_peers()
 
+this_node = ""
 
 @app.route("/", methods=["GET"])
 def index():
     return render_template("base.html")
 
+@app.route("/ping", methods=["GET"])
+def ping():
+    return "pong", 200
 
 @app.route("/chain", methods=["GET"])
 def get_chain():
@@ -119,13 +164,71 @@ def manage_peers():
     if request.method == "POST":
         data = request.get_json()
         peer = data.get("peer")
-        if peer:
-            if peer != f"http://localhost:{request.host.split(':')[1]}":
+
+        if not peer:
+            return jsonify({"error": "❌ Missing peer URL"}), 400
+
+        try:
+            peer = peer.rstrip("/")
+            current_host = request.host_url.rstrip("/")
+
+            if peer == current_host:
+                return jsonify({"error": "❌ Cannot add self as peer"}), 400
+
+            res = requests.get(f"{peer}/chain", timeout=2)
+            if res.status_code != 200:
+                raise Exception("Non-200 response")
+
+            if peer not in peers:
                 peers.add(peer)
-            return jsonify({"message": "Peer added", "peers": list(peers)})
-        return jsonify({"error": "Missing peer"}), 400
+                save_peers()
+
+                try:
+                    requests.post(f"{peer}/peers", json={"peer": current_host}, timeout=2)
+                except:
+                    pass
+
+                try:
+                    requests.post(f"{peer}/peers/gossip", json={"peers": list(peers)}, timeout=2)
+                except:
+                    pass
+
+            return jsonify({"message": "✅ Peer added", "peers": list(peers)}), 201
+
+        except Exception as e:
+            return jsonify({"error": f"❌ Peer unreachable: {str(e)}"}), 400
+
     return jsonify({"peers": list(peers)})
 
+
+@app.route("/peers/propagate", methods=["POST"])
+def receive_propagated_peer():
+    peer = request.json.get("peer")
+    if peer and peer != this_node:
+        peers.add(peer)
+        save_peers()
+    return jsonify({"message": "Propagation received"})
+
+@app.route("/peers/gossip", methods=["POST"])
+def gossip_peers():
+    """
+    Receives a list of peers from another node and merges them.
+    """
+    data = request.get_json()
+    incoming = data.get("peers", [])
+    current_host = request.host_url.rstrip("/")
+    new_peers = 0
+
+    for peer in incoming:
+        peer = peer.rstrip("/")
+        if peer != current_host and peer not in peers:
+            peers.add(peer)
+            new_peers += 1
+
+    if new_peers:
+        save_peers()
+
+    return jsonify({"message": f"Gossiped {new_peers} new peers."})
 
 @app.route("/broadcast/transaction", methods=["POST"])
 def broadcast_transaction():
@@ -206,9 +309,6 @@ def merge_mempool():
 # --- Utilities ---
 
 def clean_mempool_from_chain() -> None:
-    """
-    Remove all mined transactions from the mempool.
-    """
     confirmed = set((tx.sender, tx.receiver, tx.amount)
                     for block in chain.chain
                     for tx in block.transactions)
@@ -219,24 +319,15 @@ def clean_mempool_from_chain() -> None:
 
 
 def broadcast_last_block() -> None:
-    """
-    Broadcast the latest block to all known peers.
-    """
     block = chain.get_latest_block()
-    try:
-        requests.post("/broadcast/block", json=block.__dict__, timeout=2)
-    except:
-        pass
+    for peer in peers:
+        try:
+            requests.post(f"{peer}/receive_block", json=block.__dict__, timeout=2)
+        except:
+            pass
 
 
 def fetch_all_peers_and_resolve() -> Dict[str, str]:
-    """
-    Check all peer nodes and resolve conflicts by replacing this chain
-    with the longest valid chain found.
-
-    Returns:
-        Dict[str, str]: Message indicating whether the chain was replaced.
-    """
     longest_chain = chain.chain
     max_length = len(longest_chain)
 
@@ -271,9 +362,150 @@ def fetch_all_peers_and_resolve() -> Dict[str, str]:
     return {"message": "No replacement needed"}
 
 
+def crawl_and_connect_to_peer(seed_peer: str):
+    if seed_peer == this_node:
+        return
+    peers.add(seed_peer)
+
+    try:
+        res = requests.get(f"{seed_peer}/peers", timeout=2)
+        remote_peers = res.json().get("peers", [])
+        for peer in remote_peers:
+            if peer != this_node:
+                peers.add(peer)
+                save_peers()
+    except:
+        pass
+
+    # Let seed peer know about us
+    try:
+        requests.post(f"{seed_peer}/peers/propagate", json={"peer": this_node}, timeout=2)
+    except:
+        pass
+
+def announce_to_peers():
+    """
+    On startup, announce this node to known peers and gossip peers.
+    """
+    current_host = f"http://localhost:{app.config['PORT']}"
+    for peer in list(peers):
+        try:
+            # Ask peer to add us
+            requests.post(f"{peer}/peers", json={"peer": current_host}, timeout=2)
+            # Send our peers list for gossip
+            requests.post(f"{peer}/peers/gossip", json={"peers": list(peers)}, timeout=2)
+        except Exception as e:
+            print(f"[Startup] Failed to announce to {peer}: {e}")
+
+def prune_dead_peers(interval=30):
+    """
+    Periodically ping all peers and remove unreachable ones.
+    """
+    while True:
+        time.sleep(interval)
+        removed = []
+        for peer in list(peers):
+            try:
+                res = requests.get(f"{peer}/chain", timeout=2)
+                if res.status_code != 200:
+                    raise Exception("Bad status")
+            except:
+                peers.remove(peer)
+                removed.append(peer)
+
+        if removed:
+            save_peers()
+            print(f"[Prune] Removed dead peers: {removed}")
+
+def discover_local_peers(port_range=(5000, 5010)):
+    """
+    Scan the local network (localhost) for other running nodes in the given port range.
+    Automatically join them and request they add us back.
+    """
+    current_port = app.config['PORT']
+    current_host = f"http://localhost:{current_port}"
+
+    for port in range(port_range[0], port_range[1] + 1):
+        if port == current_port:
+            continue  # skip self
+
+        peer_url = f"http://localhost:{port}"
+        try:
+            # Ping to see if it's alive
+            res = requests.get(f"{peer_url}/chain", timeout=1)
+            if res.status_code == 200:
+                if peer_url not in peers:
+                    print(f"[Discovery] Found active peer at {peer_url}")
+                    peers.add(peer_url)
+                    save_peers()
+
+                # Request they add us too
+                try:
+                    requests.post(f"{peer_url}/peers", json={"peer": current_host}, timeout=1)
+                except:
+                    pass
+        except:
+            pass  # peer not online
+
+def periodic_local_discovery(interval=30):
+    while True:
+        discover_local_peers()
+        time.sleep(interval)
+
+
+
+peer_failures = {}
+
+def heartbeat_peers():
+    while True:
+        time.sleep(10)  # every 10 seconds
+        to_remove = []
+
+        for peer in list(peers):
+            try:
+                res = requests.get(f"{peer}/ping", timeout=2)
+                if res.status_code == 200:
+                    peer_failures[peer] = 0  # reset failure count
+                else:
+                    peer_failures[peer] = peer_failures.get(peer, 0) + 1
+            except:
+                peer_failures[peer] = peer_failures.get(peer, 0) + 1
+
+            if peer_failures[peer] >= 3:
+                to_remove.append(peer)
+
+        for peer in to_remove:
+            peers.discard(peer)
+            peer_failures.pop(peer, None)
+            save_peers()
+            print(f"❌ Removed unreachable peer: {peer}")
+
+
+
 if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument("--port", default=5000, type=int)
+    parser.add_argument("--seed", type=int, help="Optional seed peer port")
     args = parser.parse_args()
+
+    # Store this node's port globally
+    app.config['PORT'] = args.port
+    this_node = f"http://localhost:{args.port}"
+
+    # Load existing peers
+    load_peers()
+
+    # If no peers saved, scan for local ones
+    if not peers:
+        discover_local_peers(port_range=(5000, 5010))
+
+    # Announce ourselves to known peers and gossip
+    announce_to_peers()
+
+    # Start pruning
+    threading.Thread(target=prune_dead_peers, daemon=True).start()
+    threading.Thread(target=periodic_local_discovery, daemon=True).start()
+    threading.Thread(target=heartbeat_peers, daemon=True).start()
+
     app.run(port=args.port)
