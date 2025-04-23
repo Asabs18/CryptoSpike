@@ -1,5 +1,12 @@
 <div class="bg-white p-3 rounded shadow-sm mt-4 mb-4">
-    <h4 class="text-center">📥 Pending Transactions</h4>
+    <div class="position-relative mb-2">
+        <h4 class="text-center m-0">📥 Pending Transactions</h4>
+        <span id="syncSpinner"
+            class="spinner-border spinner-border-sm text-secondary position-absolute d-none"
+            style="top: 0; right: 0; width: 1rem; height: 1rem;"
+            role="status"
+            aria-hidden="true"></span>
+    </div>
     <div id="mempoolDisplay" class="tx-list"
         style="max-height: 300px; overflow-y: auto;"></div>
 </div>

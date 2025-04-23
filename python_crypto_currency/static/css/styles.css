@@ -1,0 +1,45 @@
+/* Main styling for blockchain wallet app */
+
+.copy-btn { 
+    cursor: pointer; 
+    font-size: 0.9em; 
+    color: #007bff; 
+    margin-right: 0.5em; 
+  }
+  
+  .scroll-x { 
+    overflow-x: auto; 
+    white-space: nowrap; 
+  }
+  
+  .mined-block { 
+    border: 2px solid green; 
+    background: #e6ffe6; 
+    padding: 10px; 
+    margin-bottom: 10px; 
+    border-radius: 5px; 
+  }
+  
+  .tx-list { 
+    background: #f9f9f9; 
+    border-left: 3px solid #ddd; 
+    padding: 8px; 
+    margin-top: 5px; 
+    font-size: 0.85rem; 
+  }
+  
+  .tx-entry { 
+    margin-bottom: 6px; 
+  }
+  
+  .centered-buttons { 
+    display: flex; 
+    justify-content: center; 
+    gap: 1rem; 
+    flex-wrap: wrap; 
+  }
+  
+  /* Global alert styles */
+  #globalAlert {
+    z-index: 1050;
+  }
