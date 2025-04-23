@@ -1,0 +1,19 @@
+<div class="mb-4 p-3 bg-white rounded shadow-sm">
+    <h4 class="text-center">🔐 Wallet</h4>
+    <div class="centered-buttons mb-3">
+        <button class="btn btn-outline-primary"
+            onclick="generateWallet()">Generate Wallet</button>
+        <button class="btn btn-outline-danger" onclick="resetWallet()">Reset
+            Wallet</button>
+    </div>
+    <div id="walletInfo" style="display: none;" class="text-center">
+        <div class="d-flex justify-content-center">
+            <span class="copy-btn me-2"
+                onclick="copyText('walletAddress')">📋</span>
+            <div style="max-width: 100%; overflow-x: auto;">
+                <div style="min-width: 10rem; white-space: nowrap;"
+                    id="walletAddress"></div>
+            </div>
+        </div>
+    </div>
+</div>

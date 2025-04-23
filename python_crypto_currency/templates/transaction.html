@@ -1,0 +1,19 @@
+<div class="mb-4 p-3 bg-white rounded shadow-sm">
+    <h4 class="text-center">📤 Create & Sign Transaction</h4>
+    <form id="txForm">
+        <div class="mb-2">
+            <label for="receiver" class="form-label">Receiver Address</label>
+            <input class="form-control" id="receiver" required />
+        </div>
+        <div class="mb-2">
+            <label for="amount" class="form-label">Amount</label>
+            <input class="form-control" id="amount" type="number" step="0.01"
+                required />
+        </div>
+        <div class="centered-buttons">
+            <button type="submit" class="btn btn-primary">Send
+                Transaction</button>
+        </div>
+    </form>
+    <div id="txStatus" class="mt-2 text-success text-center"></div>
+</div>

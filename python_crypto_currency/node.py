@@ -13,7 +13,7 @@ peers = set()
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    return render_template("base.html")
 
 @app.route("/chain", methods=["GET"])
 def get_chain():
