@@ -5,7 +5,7 @@ import requests
 from blockchain.blockchain import Blockchain
 from blockchain.transaction import Transaction
 from blockchain.block import Block
-import time
+import hashlib
 
 app = Flask(__name__, template_folder="templates")
 chain = Blockchain(difficulty=4)
@@ -47,7 +47,7 @@ def create_signed_transaction():
     signature_hex = data["signature"]
 
     # Create the canonical message (string format must match frontend exactly)
-    message = f"{receiver}:{amount}".encode()
+    message = f"{receiver}:{float(amount):.2f}".encode()
 
     try:
         from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
@@ -60,7 +60,8 @@ def create_signed_transaction():
         sig_bytes = bytes.fromhex(signature_hex)
 
         # Perform signature verification
-        if not verifying_key.verify(sig_bytes, message):
+        msg_hash = hashlib.sha256(message).digest()
+        if not verifying_key.verify_digest(sig_bytes, msg_hash):
             return jsonify({"error": "Invalid signature"}), 403
 
     except (BadSignatureError, ValueError) as e:
