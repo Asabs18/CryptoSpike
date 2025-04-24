@@ -39,6 +39,8 @@ def normalize_peer_url(url):
 PEERS_FILE = os.path.join(get_data_dir(), "peers.json")
 peers = set()
 
+this_node = ""
+
 def load_peers():
     global peers
     if os.path.exists(PEERS_FILE):
@@ -169,8 +171,8 @@ def manage_peers():
             return jsonify({"error": "❌ Missing peer URL"}), 400
 
         try:
-            peer = peer.rstrip("/")
-            current_host = request.host_url.rstrip("/")
+            peer = normalize_peer_url(peer)
+            current_host = this_node
 
             if peer == current_host:
                 return jsonify({"error": "❌ Cannot add self as peer"}), 400
@@ -211,17 +213,13 @@ def receive_propagated_peer():
 
 @app.route("/peers/gossip", methods=["POST"])
 def gossip_peers():
-    """
-    Receives a list of peers from another node and merges them.
-    """
     data = request.get_json()
     incoming = data.get("peers", [])
-    current_host = request.host_url.rstrip("/")
     new_peers = 0
 
     for peer in incoming:
-        peer = peer.rstrip("/")
-        if peer != current_host and peer not in peers:
+        peer = normalize_peer_url(peer)
+        if peer != this_node and peer not in peers:
             peers.add(peer)
             new_peers += 1
 
@@ -418,10 +416,6 @@ def prune_dead_peers(interval=30):
             print(f"[Prune] Removed dead peers: {removed}")
 
 def discover_local_peers(port_range=(5000, 5010)):
-    """
-    Scan the local network (localhost) for other running nodes in the given port range.
-    Automatically join them and request they add us back.
-    """
     current_port = app.config['PORT']
     current_host = f"http://localhost:{current_port}"
 
@@ -431,21 +425,21 @@ def discover_local_peers(port_range=(5000, 5010)):
 
         peer_url = f"http://localhost:{port}"
         try:
-            # Ping to see if it's alive
             res = requests.get(f"{peer_url}/chain", timeout=1)
             if res.status_code == 200:
+                peer_url = normalize_peer_url(peer_url)
                 if peer_url not in peers:
                     print(f"[Discovery] Found active peer at {peer_url}")
                     peers.add(peer_url)
                     save_peers()
 
-                # Request they add us too
                 try:
                     requests.post(f"{peer_url}/peers", json={"peer": current_host}, timeout=1)
                 except:
                     pass
         except:
             pass  # peer not online
+
 
 def periodic_local_discovery(interval=30):
     while True:
@@ -491,7 +485,7 @@ if __name__ == "__main__":
 
     # Store this node's port globally
     app.config['PORT'] = args.port
-    this_node = f"http://localhost:{args.port}"
+    this_node = normalize_peer_url(f"http://localhost:{args.port}")
 
     # Load existing peers
     load_peers()
